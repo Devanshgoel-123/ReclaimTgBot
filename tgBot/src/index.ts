@@ -7,16 +7,22 @@ import { ReclaimProofRequest, verifyProof } from '@reclaimprotocol/js-sdk';
 dotenv.config();
 
 const app=express();
+const PORT = process.env.PORT || 3000;
+const TG_TOKEN = process.env.TELEGRAM_BOT_KEY;
+const APP_ID = process.env.APPLICATION_ID;
+const APP_SECRET = process.env.APPLICATION_SECRET;
+const PROVIDER_ID = process.env.PROVIDER_ID;
+const TG_GROUP_URL = process.env.TG_GROUP_URL || "https://t.me/+uTXaKd1whP8zOTU9";
+const BASE_URL = process.env.BASE_URL || "http://localhost:3000"; 
 
-
-const TG_TOKEN=process.env.TELEGRAM_BOT_KEY;
-const APP_ID=process.env.APPLICATION_ID;
-const APP_SECRET=process.env.APPLICATION_SECRET;
-const PROVIDER_ID=process.env.PROVIDER_ID;
-const BASE_URL="https://f4d1-2405-201-4020-fc-d09-351d-8216-b82.ngrok-free.app";
+if (!TG_TOKEN || !APP_ID || !APP_SECRET || !PROVIDER_ID) {
+    console.error("Missing required environment variables");
+    process.exit(1);
+}
 
 app.use(express.json())
 app.use(express.text({ type: '*/*', limit: '50mb' }))
+
 
 if(TG_TOKEN===undefined || APP_ID===undefined || APP_SECRET===undefined || PROVIDER_ID===undefined){
     throw new Error("Unable to get the telegram token")
@@ -29,8 +35,8 @@ interface publicData{
     contributionsLastYear:string;
 }
 
-//Creating a verificationToken to prevent unauthorized verification
-const verificationTokens = new Map<string, {userId: number, chatId: number, timestamp: number}>();
+
+const msgIdMap = new Map<number,number>();
 
 
 const telegramBot=new TelegramBot(TG_TOKEN,{
@@ -44,7 +50,7 @@ telegramBot.getUpdates({
 telegramBot.on('new_chat_members', async (msg) => {
     const chatId = msg.chat.id;
     const newUser = msg.new_chat_members?.[0];
-    
+     console.log("The chat id is",chatId);
     if (!newUser) return;
   
     try {
@@ -55,71 +61,90 @@ telegramBot.on('new_chat_members', async (msg) => {
         can_send_photos:false
       });
 
-      await telegramBot.sendMessage(msg.chat.id, `Welcome, ${newUser.first_name}! Please verify to participate.`, {
-          reply_markup: {
-            inline_keyboard: [[
-                { text: "✅ Verify",callback_data: `verify_${newUser.id}` }
-              ]]
-          }
-    });
-
+      const msgId=await telegramBot.sendMessage(chatId, `Hi ${newUser.first_name}, please click below to verify and join the group:`, {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '✅ Verify Me', url: `https://t.me/ReclaimBoiBot?start=verifyme_${chatId}`}
+          ]]
+        }
+      });
+      msgIdMap.set(newUser.id, msgId.message_id);
+    
     } catch (err) {
       console.error("Error restricting or sending message:", err);
     }
 });
 
 
-telegramBot.on('callback_query', async (callbackQuery) => {
-    try {
-      const msg = callbackQuery.message;
-      const from = callbackQuery.from;
-      const data = callbackQuery.data;
-      if (!msg || !data) return;
+// telegramBot.on('callback_query', async (callbackQuery) => {
+//     try {
+//       const msg = callbackQuery.message;
+//       const from = callbackQuery.from;
+//       const data = callbackQuery.data;
+//       if (!msg || !data) return;
   
-      if (data.startsWith("verify_")) {
-        const userId = parseInt(data.split("_")[1]);
-        const chatId = msg.chat.id;
-         console.log(msg, from, data)
-        if (userId !== from.id) {
-          telegramBot.answerCallbackQuery(callbackQuery.id, {
-            text: "You can't verify for someone else.",
-            show_alert: true,
-          });
-        }
+//       if (data.startsWith("verify_")) {
+//         const userId = parseInt(data.split("_")[1]);
+//         const chatId = msg.chat.id;
+//          console.log(msg, from, data)
+//         if (userId !== from.id) {
+//           telegramBot.answerCallbackQuery(callbackQuery.id, {
+//             text: "You can't verify for someone else.",
+//             show_alert: true,
+//           });
+    
+//         }
+//         const reclaimProofRequest = await ReclaimProofRequest.init(APP_ID, APP_SECRET, PROVIDER_ID);
+//         reclaimProofRequest.setAppCallbackUrl(`${BASE_URL}/receive-proofs?userId=${userId}&chatId=${chatId}`);
+//         const requestURL = await reclaimProofRequest.getRequestUrl();
+  
+//         await telegramBot.sendMessage(chatId, "Click below to verify:", {
+//           reply_markup: {
+//             inline_keyboard: [[{ text: "Click To Begin Verification", login_url:{
+//                 url:requestURL
+//             } }]],
+//           },
+//         });
+//       }
+//     } catch (err) {
+//       console.log("Error in the callback query:", err);
+//     }
+//   });
+  
+telegramBot.onText(/\/start (.+)/, async (msg, match) => {
+        const userId = msg.from?.id;
+        console.log("The user id is", userId,match)
+        const payload=match?.[1];
+        console.log("Got a /start request with payload:", payload);
+        if(!userId) return;
 
-        const token = generateOneTimeToken(userId, chatId);
-        const verificationLink = `${BASE_URL}/start-verification?token=${token}`;
-        // const reclaimProofRequest = await ReclaimProofRequest.init(APP_ID, APP_SECRET, PROVIDER_ID);
-        // reclaimProofRequest.setAppCallbackUrl(`${BASE_URL}/receive-proofs?userId=${userId}&chatId=${chatId}`);
-        // const requestURL = await reclaimProofRequest.getRequestUrl();
-        await telegramBot.sendMessage(chatId, "Click below to verify:", {
+        if (!payload || !payload.startsWith('verifyme_')) {
+            return telegramBot.sendMessage(userId, "Invalid verification link.");
+        }
+        const chatId = parseInt(payload.split("_")[1]);
+        console.log("The required chat💬 id is",chatId)
+        if (isNaN(chatId)) {
+        return telegramBot.sendMessage(userId, "Could not extract group information from the link.");
+       }
+
+        try {
+        const reclaimProofRequest = await ReclaimProofRequest.init(APP_ID, APP_SECRET, PROVIDER_ID);
+        reclaimProofRequest.setRedirectUrl(TG_GROUP_URL);
+        reclaimProofRequest.setAppCallbackUrl(`${BASE_URL}/receive-proofs?userId=${userId}&chatId=${chatId}`);
+        const requestURL = await reclaimProofRequest.getRequestUrl();
+
+        await telegramBot.sendMessage(userId, "Click below to verify:", {
           reply_markup: {
-            inline_keyboard: [[{ text: "Click To Begin Verification", login_url:{
-                url:verificationLink
-            } }]],
+            inline_keyboard: [[{ text: "Click To Begin Verification", url:requestURL }]],
           },
         });
-      }
-    } catch (err) {
-      console.log("Error in the callback query:", err);
-    }
-  });
-  
-  app.get('/start-verification', async (req, res):Promise<any> => {
-    const token = req.query.token as string;
-    const result = validateOneTimeToken(token);
-    if (!result) return res.status(401).send("Invalid or expired verification link.");
-
-    const { userId, chatId } = result;
-
-    const reclaimProofRequest = await ReclaimProofRequest.init(APP_ID, APP_SECRET, PROVIDER_ID);
-    reclaimProofRequest.setAppCallbackUrl(`${BASE_URL}/receive-proofs?token=${token}`);
-    const requestURL = await reclaimProofRequest.getRequestUrl();
-
-    // Redirect to Reclaim
-    res.redirect(requestURL);
-});  
-
+        const message=msgIdMap.get(userId);
+        if(!message) return;
+        await telegramBot.deleteMessage(chatId, message);
+        } catch (err) {
+         console.log("THe error is",err);
+        }
+});
 
 app.post('/receive-proofs', async (req,res):Promise<any>=>{
     const chatId = Number(req.query.chatId);
@@ -133,12 +158,11 @@ app.post('/receive-proofs', async (req,res):Promise<any>=>{
         const decodedBody = decodeURIComponent(req.body);
         const proof = JSON.parse(decodedBody);
         console.log("The proof is",proof);
-        const result = await verifyProof(proof);
-        console.log("The proof is ",result)
+        const isValidProof = await verifyProof(proof);
         const publicData:publicData=proof.publicData;
-        const eligibility=checkEligibilityToEnterGroup(publicData);
-        console.log("The eligibility is",eligibility)
-        if(eligibility){
+        const isEligible=checkEligibilityToEnterGroup(publicData);
+
+        if(isEligible && isValidProof){
             await telegramBot.restrictChatMember(chatId, userId, {
                 can_send_messages: true,
                 can_send_audios: true,
@@ -147,22 +171,26 @@ app.post('/receive-proofs', async (req,res):Promise<any>=>{
                 can_send_other_messages: true,
                 can_add_web_page_previews: true,
             });
+            await telegramBot.sendMessage(userId, 
+                `✅ Verification complete! You've been granted access to the group.`
+            );
+        return res.redirect(TG_GROUP_URL);
         }else{
+            console.log(`User ${userId} verification failed`);
+            let reason = "";
+            if (!isValidProof) reason = "Invalid proof.";
+            else reason = "GitHub account does not meet the minimum requirements (3+ months old, 5+ repos, 300+ contributions in last year).";
             
-            await telegramBot.sendMessage(chatId, `Error Veriying the user! Please Try again after 5 mins.`, {
-                reply_markup: {
-                  inline_keyboard: [[
-                      { text: "Error"}
-                    ]]
-                }
-          });
+            await telegramBot.sendMessage(userId, 
+                `❌ Verification failed: ${reason}\n\nPlease try again after ensuring your GitHub account meets the requirements.`
+            )
         }
     } catch (error) {
         const reclaimProofRequest = await ReclaimProofRequest.init(APP_ID, APP_SECRET, PROVIDER_ID);
         reclaimProofRequest.setAppCallbackUrl(`${BASE_URL}/receive-proofs?userId=${userId}&chatId=${chatId}`);
         const requestURL = await reclaimProofRequest.getRequestUrl();
         console.error("Error verifying proof:", error);
-        await telegramBot.sendMessage(chatId, `Error Veriying the user! Please Try again after 5 mins.`, {
+        await telegramBot.sendMessage(userId, `Error Veriying the user! Please Try again after 5 mins.`, {
             reply_markup: {
               inline_keyboard: [[
                   { text: "Try Again",url:requestURL}
@@ -173,56 +201,39 @@ app.post('/receive-proofs', async (req,res):Promise<any>=>{
 })
 
 
-
-app.listen(3000, () => {
-    console.log(`Server running at http://localhost:${3000}`)
-})
-
 const checkEligibilityToEnterGroup=(publicData:publicData)=>{
     try{
-        const createdAtUTC = new Date(publicData.created_at); 
+        const createdAtUTC = new Date(publicData.created_at);
         const nowUTC = new Date();
         const threeMonthsAgoUTC = new Date(Date.UTC(
-          nowUTC.getUTCFullYear(),
-          nowUTC.getUTCMonth() - 3,
-          nowUTC.getUTCDate(),
-          nowUTC.getUTCHours(),
-          nowUTC.getUTCMinutes(),
-          nowUTC.getUTCSeconds()
+            nowUTC.getUTCFullYear(),
+            nowUTC.getUTCMonth() - 3,
+            nowUTC.getUTCDate(),
+            nowUTC.getUTCHours(),
+            nowUTC.getUTCMinutes(),
+            nowUTC.getUTCSeconds()
         ));
+        
         const isOlderThanThreeMonths = createdAtUTC < threeMonthsAgoUTC;
-       const result = Number(publicData.contributionsLastYear) > 300 &&  isOlderThanThreeMonths && Number(publicData.repoCount) > 5;
-       return result;
+        const contributionsLastYear = Number(publicData.contributionsLastYear) || 0;
+        const repoCount = Number(publicData.repoCount) || 0;
+        
+        return contributionsLastYear > 300 && isOlderThanThreeMonths && repoCount > 5;
     }catch(err){
         console.log("Error checking eligibility for the user")
         return false;
     }
 }
 
-function generateOneTimeToken(userId: number, chatId: number): string {
-    const payload = `${userId}:${chatId}:${Date.now()}`;
-    const signature = crypto.createHmac('sha256', APP_SECRET!).update(payload).digest('hex');
-    return Buffer.from(`${payload}:${signature}`).toString('base64');
-}
 
-function validateOneTimeToken(token: string): { userId: number, chatId: number } | null {
-    try {
-        const decoded = Buffer.from(token, 'base64').toString('utf-8');
-        const [userIdStr, chatIdStr, timestampStr, signature] = decoded.split(":");
 
-        const payload = `${userIdStr}:${chatIdStr}:${timestampStr}`;
-        const expectedSig = crypto.createHmac('sha256', APP_SECRET!).update(payload).digest('hex');
+app.get('/health', (_, res) => {
+    res.status(200).send('OK');
+});
 
-        if (signature !== expectedSig) return null;
 
-        const timestamp = parseInt(timestampStr);
-        if (Date.now() - timestamp > 5 * 60 * 1000) return null; // 5 min expiry
-
-        return {
-            userId: parseInt(userIdStr),
-            chatId: parseInt(chatIdStr),
-        };
-    } catch {
-        return null;
-    }
-}
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+    console.log(`Base URL: ${BASE_URL}`);
+    console.log(`Telegram group: ${TG_GROUP_URL}`);
+});
