@@ -1,7 +1,7 @@
 import TelegramBot from "node-telegram-bot-api";
 import dotenv from "dotenv";
 import express from "express";
-import crypto from "crypto";
+import axios from "axios";
 import { ReclaimProofRequest, verifyProof } from '@reclaimprotocol/js-sdk';
 
 dotenv.config();
@@ -30,9 +30,9 @@ if(TG_TOKEN===undefined || APP_ID===undefined || APP_SECRET===undefined || PROVI
 
 interface publicData{
     username:string;
-    created_at:string;
-    repoCount:string;
-    contributionsLastYear:string;
+    created_at?:string;
+    repoCount?:string;
+    contributionsLastYear?:number;
 }
 
 
@@ -158,8 +158,21 @@ app.post('/receive-proofs', async (req,res):Promise<any>=>{
         const decodedBody = decodeURIComponent(req.body);
         const proof = JSON.parse(decodedBody);
         console.log("The proof is",proof);
+        const params=(JSON.parse(proof.claimData.context)).extractedParameters;
+        const {URL_PARAMS_1, contributions}=params;
+        console.log("THe values are",URL_PARAMS_1, contributions)
         const isValidProof = await verifyProof(proof);
-        const publicData:publicData=proof.publicData;
+        const response=await axios.get(`https://api.github.com/users/${URL_PARAMS_1}`);
+        console.log(response.data)
+        const data=response.data;
+        const publicData:publicData={
+            created_at:data.created_at,
+            username:URL_PARAMS_1,
+            repoCount:data.public_repos,
+            contributionsLastYear:parseInt(contributions.trim(),10)
+        }
+
+        console.log("The public data is",publicData)
         const isEligible=checkEligibilityToEnterGroup(publicData);
 
         if(isEligible && isValidProof){
@@ -173,6 +186,9 @@ app.post('/receive-proofs', async (req,res):Promise<any>=>{
             });
             await telegramBot.sendMessage(userId, 
                 `✅ Verification complete! You've been granted access to the group.`
+            );
+            await telegramBot.sendMessage(chatId, 
+                `Welcome to the group ${data.name}.`
             );
         return res.redirect(TG_GROUP_URL);
         }else{
@@ -203,6 +219,7 @@ app.post('/receive-proofs', async (req,res):Promise<any>=>{
 
 const checkEligibilityToEnterGroup=(publicData:publicData)=>{
     try{
+        if(!publicData.created_at) return;
         const createdAtUTC = new Date(publicData.created_at);
         const nowUTC = new Date();
         const threeMonthsAgoUTC = new Date(Date.UTC(
@@ -217,7 +234,6 @@ const checkEligibilityToEnterGroup=(publicData:publicData)=>{
         const isOlderThanThreeMonths = createdAtUTC < threeMonthsAgoUTC;
         const contributionsLastYear = Number(publicData.contributionsLastYear) || 0;
         const repoCount = Number(publicData.repoCount) || 0;
-        
         return contributionsLastYear > 300 && isOlderThanThreeMonths && repoCount > 5;
     }catch(err){
         console.log("Error checking eligibility for the user")
