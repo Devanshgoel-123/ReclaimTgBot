@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import express from "express";
 import axios from "axios";
 import { ReclaimProofRequest, verifyProof } from '@reclaimprotocol/js-sdk';
+import QRCode  from "qrcode";
 
 dotenv.config();
 
@@ -12,7 +13,7 @@ const TG_TOKEN = process.env.TELEGRAM_BOT_KEY;
 const APP_ID = process.env.APPLICATION_ID;
 const APP_SECRET = process.env.APPLICATION_SECRET;
 const PROVIDER_ID = process.env.PROVIDER_ID;
-const TG_GROUP_URL = process.env.TG_GROUP_URL || "https://t.me/+uTXaKd1whP8zOTU9";
+const TG_GROUP_URL = process.env.TG_GROUP_URL || "https://t.me/+NopYIC9o-IMxOWRl";
 const BASE_URL = process.env.BASE_URL || "http://localhost:3000"; 
 
 if (!TG_TOKEN || !APP_ID || !APP_SECRET || !PROVIDER_ID) {
@@ -36,15 +37,16 @@ interface publicData{
 }
 
 
-const msgIdMap = new Map<number,number>();
+const msgIdMap = new Map<number,{msgId:number, groupChatId:number}>();
 
+const verificationSession = new Map<number, { chatId: number }>();
 
 const telegramBot=new TelegramBot(TG_TOKEN,{
     polling:true
 })
 
 telegramBot.getUpdates({
-    allowed_updates:["chat_join_request","message"]
+    allowed_updates:["new_chat_members","message"]
 })
 
 telegramBot.on('new_chat_members', async (msg) => {
@@ -58,7 +60,8 @@ telegramBot.on('new_chat_members', async (msg) => {
         can_send_messages:false,
         can_send_audios:false,
         can_send_documents:false,
-        can_send_photos:false
+        can_send_photos:false,
+        can_send_other_messages:false
       });
 
       const msgId=await telegramBot.sendMessage(chatId, `Hi ${newUser.first_name}, please click below to verify and join the group:`, {
@@ -68,83 +71,89 @@ telegramBot.on('new_chat_members', async (msg) => {
           ]]
         }
       });
-      msgIdMap.set(newUser.id, msgId.message_id);
+      msgIdMap.set(newUser.id, {msgId:msgId.message_id, groupChatId:chatId});
     
     } catch (err) {
       console.error("Error restricting or sending message:", err);
     }
 });
 
+// 2nd part of the flow, when user is DMed via bot to select the device they are on, currently
 
-// telegramBot.on('callback_query', async (callbackQuery) => {
-//     try {
-//       const msg = callbackQuery.message;
-//       const from = callbackQuery.from;
-//       const data = callbackQuery.data;
-//       if (!msg || !data) return;
-  
-//       if (data.startsWith("verify_")) {
-//         const userId = parseInt(data.split("_")[1]);
-//         const chatId = msg.chat.id;
-//          console.log(msg, from, data)
-//         if (userId !== from.id) {
-//           telegramBot.answerCallbackQuery(callbackQuery.id, {
-//             text: "You can't verify for someone else.",
-//             show_alert: true,
-//           });
-    
-//         }
-//         const reclaimProofRequest = await ReclaimProofRequest.init(APP_ID, APP_SECRET, PROVIDER_ID);
-//         reclaimProofRequest.setAppCallbackUrl(`${BASE_URL}/receive-proofs?userId=${userId}&chatId=${chatId}`);
-//         const requestURL = await reclaimProofRequest.getRequestUrl();
-  
-//         await telegramBot.sendMessage(chatId, "Click below to verify:", {
-//           reply_markup: {
-//             inline_keyboard: [[{ text: "Click To Begin Verification", login_url:{
-//                 url:requestURL
-//             } }]],
-//           },
-//         });
-//       }
-//     } catch (err) {
-//       console.log("Error in the callback query:", err);
-//     }
-//   });
-  
 telegramBot.onText(/\/start (.+)/, async (msg, match) => {
-        const userId = msg.from?.id;
-        console.log("The user id is", userId,match)
-        const payload=match?.[1];
-        console.log("Got a /start request with payload:", payload);
-        if(!userId) return;
+    const personalChatId = msg.chat.id;
+    const userId = msg.from?.id; 
+    
+    if(!userId || !personalChatId) return;
 
-        if (!payload || !payload.startsWith('verifyme_')) {
-            return telegramBot.sendMessage(userId, "Invalid verification link.");
-        }
-        const chatId = parseInt(payload.split("_")[1]);
-        console.log("The required chat💬 id is",chatId)
-        if (isNaN(chatId)) {
-        return telegramBot.sendMessage(userId, "Could not extract group information from the link.");
-       }
+    verificationSession.set(userId, { chatId: personalChatId });
+    telegramBot.sendMessage(personalChatId, 'Are you using Telegram on a mobile device or desktop?', {
+      reply_markup: {
+        inline_keyboard: [
+            [
+            { text: "📱 Mobile", callback_data:"device_mobile" }
+            ],
+            [
+            { text: "🖥️ Desktop", callback_data:"device_desktop" }
+            ]],
+        one_time_keyboard: true,
+        resize_keyboard: true,
+      },
+    });
+})
 
-        try {
-        const reclaimProofRequest = await ReclaimProofRequest.init(APP_ID, APP_SECRET, PROVIDER_ID);
-        reclaimProofRequest.setRedirectUrl(TG_GROUP_URL);
-        reclaimProofRequest.setAppCallbackUrl(`${BASE_URL}/receive-proofs?userId=${userId}&chatId=${chatId}`);
-        const requestURL = await reclaimProofRequest.getRequestUrl();
 
-        await telegramBot.sendMessage(userId, "Click below to verify:", {
-          reply_markup: {
-            inline_keyboard: [[{ text: "Click To Begin Verification", url:requestURL }]],
-          },
-        });
-        const message=msgIdMap.get(userId);
-        if(!message) return;
-        await telegramBot.deleteMessage(chatId, message);
-        } catch (err) {
-         console.log("THe error is",err);
-        }
+
+telegramBot.on('callback_query', async (callbackQuery) => {
+    const data = callbackQuery.data;
+    const userId = callbackQuery.from.id;
+    const message = callbackQuery.message;
+    const groupChatId=msgIdMap.get(userId)?.groupChatId;
+    const personalChatId=verificationSession.get(userId)?.chatId;
+    console.log("THe group chat id is",groupChatId)
+    console.log("The personal chat id is",personalChatId)
+    if (!data || !data.startsWith("device_")) return;
+    
+    if(!userId || !personalChatId || !groupChatId) return; 
+    
+    console.log("The required chat💬 id is",personalChatId, groupChatId)
+    if (isNaN(groupChatId)) {
+    return telegramBot.sendMessage(userId, "Could not extract group information from the link.");
+    }
+    const reclaimProofRequest = await ReclaimProofRequest.init(APP_ID, APP_SECRET, PROVIDER_ID);
+    reclaimProofRequest.setRedirectUrl(TG_GROUP_URL);
+    reclaimProofRequest.setAppCallbackUrl(`${BASE_URL}/receive-proofs?userId=${userId}&chatId=${groupChatId}`);
+    const requestURL = await reclaimProofRequest.getRequestUrl();
+
+    try {
+        if(data?.toLowerCase().includes("mobile")){
+            await telegramBot.sendMessage(userId, "Click below to verify:", {
+                    reply_markup: {
+                      inline_keyboard: [[{ text: "Click To Begin Verification", url:requestURL }]],
+                    },
+            });
+            const message=msgIdMap.get(userId);
+            if(!message) return;          
+    }else{
+            const qrBuffer=await QRCode.toBuffer(requestURL)
+            console.log(qrBuffer)
+            telegramBot.sendPhoto(userId, qrBuffer, {
+                    caption: `Scan this QR code from your mobile Device to Verify:\n`,
+            });
+    }
+    console.log("NExt step is deleting messages",msgIdMap, groupChatId, userId)
+    if(msgIdMap.get(userId)?.msgId  && groupChatId ){
+        await telegramBot.deleteMessage(groupChatId, msgIdMap.get(userId)?.msgId as number);
+    }else{
+        console.log("Didn't find the message to be deleted!!")
+    }
+    } catch (err) {
+        console.log("THe error is",err);
+    }
 });
+
+
+
 
 app.post('/receive-proofs', async (req,res):Promise<any>=>{
     const chatId = Number(req.query.chatId);
@@ -181,8 +190,6 @@ app.post('/receive-proofs', async (req,res):Promise<any>=>{
                 can_send_audios: true,
                 can_send_documents: true,
                 can_send_photos: true,
-                can_send_other_messages: true,
-                can_add_web_page_previews: true,
             });
             await telegramBot.sendMessage(userId, 
                 `✅ Verification complete! You've been granted access to the group.`
@@ -202,6 +209,12 @@ app.post('/receive-proofs', async (req,res):Promise<any>=>{
             )
         }
     } catch (error) {
+        await telegramBot.restrictChatMember(chatId, userId, {
+            can_send_messages: true,
+            can_send_audios: true,
+            can_send_documents: true,
+            can_send_photos: true,
+        });
         const reclaimProofRequest = await ReclaimProofRequest.init(APP_ID, APP_SECRET, PROVIDER_ID);
         reclaimProofRequest.setAppCallbackUrl(`${BASE_URL}/receive-proofs?userId=${userId}&chatId=${chatId}`);
         const requestURL = await reclaimProofRequest.getRequestUrl();
