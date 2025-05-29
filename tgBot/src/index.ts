@@ -110,10 +110,14 @@ telegramBot.on('callback_query', async (callbackQuery) => {
     const message = callbackQuery.message;
     const groupChatId=msgIdMap.get(userId)?.groupChatId;
     const personalChatId=verificationSession.get(userId)?.chatId;
+    if(msgIdMap.get(userId)?.msgId  && groupChatId ){
+        await telegramBot.deleteMessage(groupChatId, msgIdMap.get(userId)?.msgId as number);
+    }else{
+        console.log("Didn't find the message to be deleted!!")
+    }
     console.log("THe group chat id is",groupChatId)
     console.log("The personal chat id is",personalChatId)
     if (!data || !data.startsWith("device_")) return;
-    
     if(!userId || !personalChatId || !groupChatId) return; 
     
     console.log("The required chat💬 id is",personalChatId, groupChatId)
@@ -142,11 +146,7 @@ telegramBot.on('callback_query', async (callbackQuery) => {
             });
     }
     console.log("NExt step is deleting messages",msgIdMap, groupChatId, userId)
-    if(msgIdMap.get(userId)?.msgId  && groupChatId ){
-        await telegramBot.deleteMessage(groupChatId, msgIdMap.get(userId)?.msgId as number);
-    }else{
-        console.log("Didn't find the message to be deleted!!")
-    }
+    
     } catch (err) {
         console.log("THe error is",err);
     }
