@@ -5,6 +5,7 @@ import axios from "axios";
 import { ReclaimProofRequest, verifyProof } from '@reclaimprotocol/js-sdk';
 import QRCode  from "qrcode";
 
+
 dotenv.config();
 
 const app=express();
@@ -13,7 +14,7 @@ const TG_TOKEN = process.env.TELEGRAM_BOT_KEY;
 const APP_ID = process.env.APPLICATION_ID;
 const APP_SECRET = process.env.APPLICATION_SECRET;
 const PROVIDER_ID = process.env.PROVIDER_ID;
-const TG_GROUP_URL = process.env.TG_GROUP_URL || "https://t.me/+NopYIC9o-IMxOWRl";
+const TG_GROUP_URL = process.env.TG_GROUP_URL || "https://t.me/+Z78L7288dwtjMWVl";
 const BASE_URL = process.env.BASE_URL || "http://localhost:3000"; 
 
 if (!TG_TOKEN || !APP_ID || !APP_SECRET || !PROVIDER_ID) {
@@ -24,10 +25,43 @@ if (!TG_TOKEN || !APP_ID || !APP_SECRET || !PROVIDER_ID) {
 app.use(express.json())
 app.use(express.text({ type: '*/*', limit: '50mb' }))
 
-
 if(TG_TOKEN===undefined || APP_ID===undefined || APP_SECRET===undefined || PROVIDER_ID===undefined){
     throw new Error("Unable to get the telegram token")
 }
+
+
+async function setupWebhook() {
+    try {
+        await telegramBot.deleteWebHook();
+        console.log("Deleted existing webhook");
+
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        const result = await telegramBot.setWebHook(WEBHOOK_URL,{
+            allowed_updates:[
+               "message", 
+                "callback_query", 
+                "chat_join_request",
+                "chat_member",
+                "new_chat_members" 
+            ]
+        });
+        console.log("Webhook set result:", result);
+        const webhookInfo = await telegramBot.getWebHookInfo();
+        console.log("Webhook info:", webhookInfo);
+
+        if (!webhookInfo.url || webhookInfo.url !== WEBHOOK_URL) {
+            console.error("❌ Webhook URL mismatch!");
+            console.error("Expected:", WEBHOOK_URL);
+            console.error("Actual:", webhookInfo.url);
+        } else {
+            console.log("✅ Webhook successfully configured");
+        }
+    } catch (error) {
+        console.error("Error setting up webhook:", error);
+    }
+}
+
 
 interface publicData{
     username:string;
@@ -36,45 +70,88 @@ interface publicData{
     contributionsLastYear?:number;
 }
 
-
 const msgIdMap = new Map<number,{msgId:number, groupChatId:number}>();
 
 const verificationSession = new Map<number, { chatId: number }>();
 
-const telegramBot=new TelegramBot(TG_TOKEN,{
-    polling:true
-})
+const telegramBot=new TelegramBot(TG_TOKEN, {
+    polling:false,
+    webHook:true
+});
+
 
 telegramBot.getUpdates({
-    allowed_updates:["new_chat_members","message"]
+    allowed_updates:["chat_join_request","message","new_chat_members"]
+})
+const WEBHOOK_PATH = `/botWebhook`;
+const WEBHOOK_URL = `${BASE_URL}${WEBHOOK_PATH}`;
+
+
+app.post(WEBHOOK_PATH,(req,res)=>{
+    console.log("Received webhook update:", JSON.stringify(req.body, null, 2));
+    try {
+        telegramBot.processUpdate(req.body);
+        res.status(200).json({ message: "Update processed" });
+    } catch (error) {
+        console.error("Error processing update:", error);
+        res.status(500).json({ error: "Failed to process update" });
+    }
 })
 
-telegramBot.on('new_chat_members', async (msg) => {
-    const chatId = msg.chat.id;
-    const newUser = msg.new_chat_members?.[0];
-     console.log("The chat id is",chatId);
-    if (!newUser) return;
-  
-    try {
-      await telegramBot.restrictChatMember(chatId, newUser.id, {
-        can_send_messages:false,
-        can_send_audios:false,
-        can_send_documents:false,
-        can_send_photos:false,
-        can_send_other_messages:false
-      });
+telegramBot.on("message",(msg)=>{
+    console.log("Received a message:", msg);
+})
 
-      const msgId=await telegramBot.sendMessage(chatId, `Hi ${newUser.first_name}, please click below to verify and join the group:`, {
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '✅ Verify Me', url: `https://t.me/ReclaimBoiBot?start=verifyme_${chatId}`}
-          ]]
-        }
-      });
-      msgIdMap.set(newUser.id, {msgId:msgId.message_id, groupChatId:chatId});
+telegramBot.on('polling_error', (error) => {
+    console.error('Polling error (should not occur with webhooks):', error);
+});
+
+telegramBot.on("chat_join_request", async(msg)=>{
+    console.log("The entry tried");
+    await telegramBot.declineChatJoinRequest(msg.chat.id, msg.from.id);
+    console.log("Welcome new member to the tg group", msg.chat.id, msg.from.id)
+})
+
+telegramBot.on("new_chat_members", async (msg) => {
+    const chatId = msg.chat.id;
+    const newMembers = msg.new_chat_members;
+    console.log("NEW MEMBER EVENT TRIGGERED");
+    console.log("Chat ID:", chatId);
+    console.log("New members:", newMembers);
     
-    } catch (err) {
-      console.error("Error restricting or sending message:", err);
+    if (!newMembers || newMembers.length === 0) return;
+  
+    for (const newUser of newMembers) {
+        if (newUser.is_bot) continue;
+        try {
+            await telegramBot.restrictChatMember(chatId, newUser.id, {
+                can_send_messages: false,
+                can_send_audios: false,
+                can_send_documents: false,
+                can_send_photos: false,
+                can_send_other_messages: false,
+                can_send_polls: false,
+                can_add_web_page_previews: false,
+                can_change_info: false,
+                can_invite_users: false,
+                can_pin_messages: false
+            });
+
+            const sentMsg = await telegramBot.sendMessage(chatId, 
+                `Hi ${newUser.first_name || newUser.username || 'there'}, please click below to verify and join the group:`, {
+                reply_markup: {
+                    inline_keyboard: [[
+                        { text: '✅ Verify Me', url: `https://t.me/VerifyreclaimBot?start=verifyme_${chatId}` }
+                    ]]
+                }
+            });
+            
+            msgIdMap.set(newUser.id, { msgId: sentMsg.message_id, groupChatId: chatId });
+            console.log(`Stored message mapping for user ${newUser.id}:`, msgIdMap.get(newUser.id));
+            
+        } catch (err) {
+            console.error("Error handling new member:", err);
+        }
     }
 });
 
@@ -82,27 +159,30 @@ telegramBot.on('new_chat_members', async (msg) => {
 
 telegramBot.onText(/\/start (.+)/, async (msg, match) => {
     const personalChatId = msg.chat.id;
-    const userId = msg.from?.id; 
+    const userId = msg.from?.id;
+    const startParam = match?.[1];
     
-    if(!userId || !personalChatId) return;
+    console.log("Received /start command:", { personalChatId, userId, startParam });
+    
+    if (!userId || !personalChatId) return;
 
-    verificationSession.set(userId, { chatId: personalChatId });
-    telegramBot.sendMessage(personalChatId, 'Are you using Telegram on a mobile device or desktop?', {
-      reply_markup: {
-        inline_keyboard: [
-            [
-            { text: "📱 Mobile", callback_data:"device_mobile" }
-            ],
-            [
-            { text: "🖥️ Desktop", callback_data:"device_desktop" }
-            ]],
-        one_time_keyboard: true,
-        resize_keyboard: true,
-      },
-    });
+    if (startParam && startParam.startsWith('verifyme_')) {
+        verificationSession.set(userId, { chatId: personalChatId });
+        
+        await telegramBot.sendMessage(personalChatId, 
+            'Welcome! Are you using Telegram on a mobile device or desktop?', {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: "📱 Mobile", callback_data: "device_mobile" }],
+                    [{ text: "🖥️ Desktop", callback_data: "device_desktop" }]
+                ]
+            }
+        });
+    } else {
+        await telegramBot.sendMessage(personalChatId, 
+            'Hi! This bot is used for group verification. Please join through a group invite link.');
+    }
 })
-
-
 
 telegramBot.on('callback_query', async (callbackQuery) => {
     const data = callbackQuery.data;
@@ -148,7 +228,8 @@ telegramBot.on('callback_query', async (callbackQuery) => {
     console.log("NExt step is deleting messages",msgIdMap, groupChatId, userId)
     
     } catch (err) {
-        console.log("THe error is",err);
+        console.error("Error creating verification request:", err);
+        await telegramBot.sendMessage(userId, "❌ Error creating verification request. Please try again later.");
     }
 });
 
@@ -190,6 +271,12 @@ app.post('/receive-proofs', async (req,res):Promise<any>=>{
                 can_send_audios: true,
                 can_send_documents: true,
                 can_send_photos: true,
+                can_send_other_messages: true,
+                can_send_polls: true,
+                can_add_web_page_previews: true,
+                can_change_info: true,
+                can_invite_users: true,
+                can_pin_messages: true
             });
             await telegramBot.sendMessage(userId, 
                 `✅ Verification complete! You've been granted access to the group.`
@@ -210,10 +297,16 @@ app.post('/receive-proofs', async (req,res):Promise<any>=>{
         }
     } catch (error) {
         await telegramBot.restrictChatMember(chatId, userId, {
-            can_send_messages: true,
-            can_send_audios: true,
-            can_send_documents: true,
-            can_send_photos: true,
+            can_send_messages: false,
+            can_send_audios: false,
+            can_send_documents: false,
+            can_send_photos: false,
+            can_send_other_messages: false,
+            can_send_polls: false,
+            can_add_web_page_previews: false,
+            can_change_info: false,
+            can_invite_users: false,
+            can_pin_messages: false
         });
         const reclaimProofRequest = await ReclaimProofRequest.init(APP_ID, APP_SECRET, PROVIDER_ID);
         reclaimProofRequest.setAppCallbackUrl(`${BASE_URL}/receive-proofs?userId=${userId}&chatId=${chatId}`);
@@ -261,8 +354,21 @@ app.get('/health', (_, res) => {
 });
 
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Base URL: ${BASE_URL}`);
     console.log(`Telegram group: ${TG_GROUP_URL}`);
+    msgIdMap.clear();
+    verificationSession.clear();
+    console.log("🧹 Cleared existing sessions");
+    console.log("⏳ Setting up webhook...");
+    await setupWebhook();
+
+    try {
+        const botInfo = await telegramBot.getMe();
+        console.log(`🤖 Bot info: @${botInfo.username} (${botInfo.first_name})`);
+    } catch (err) {
+        console.error("❌ Could not get bot info:", err);
+    }
+
 });
