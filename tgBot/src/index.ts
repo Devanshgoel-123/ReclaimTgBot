@@ -14,7 +14,7 @@ const TG_TOKEN = process.env.TELEGRAM_BOT_KEY;
 const APP_ID = process.env.APPLICATION_ID;
 const APP_SECRET = process.env.APPLICATION_SECRET;
 const PROVIDER_ID = process.env.PROVIDER_ID;
-const TG_GROUP_URL = process.env.TG_GROUP_URL || "https://t.me/+Z78L7288dwtjMWVl";
+const TG_GROUP_URL = process.env.TG_GROUP_URL || "https://t.me/+NhYD5b9eefllMzZl";
 const BASE_URL = process.env.BASE_URL || "http://localhost:3000"; 
 
 if (!TG_TOKEN || !APP_ID || !APP_SECRET || !PROVIDER_ID) {
