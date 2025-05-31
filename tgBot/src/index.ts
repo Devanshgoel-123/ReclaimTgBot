@@ -108,7 +108,7 @@ telegramBot.on('polling_error', (error) => {
 
 telegramBot.on("chat_join_request", async(msg)=>{
     console.log("The entry tried");
-    await telegramBot.declineChatJoinRequest(msg.chat.id, msg.from.id);
+    // await telegramBot.declineChatJoinRequest(msg.chat.id, msg.from.id);
     console.log("Welcome new member to the tg group", msg.chat.id, msg.from.id)
 })
 
@@ -286,7 +286,13 @@ app.post('/receive-proofs', async (req,res):Promise<any>=>{
             );
         return res.redirect(TG_GROUP_URL);
         }else{
-            console.log(`User ${userId} verification failed`);
+            const unixTime=new Date().getMilliseconds();
+            const finalTime=(Math.floor(unixTime/1000)) + 3600;
+            await telegramBot.banChatMember(chatId, userId, {
+                until_date:finalTime,
+                revoke_messages:true
+            })
+            console.log(`User ${userId} verification failed banning them from chat`,finalTime);
             let reason = "";
             if (!isValidProof) reason = "Invalid proof.";
             else reason = "GitHub account does not meet the minimum requirements (3+ months old, 5+ repos, 300+ contributions in last year).";
@@ -296,6 +302,12 @@ app.post('/receive-proofs', async (req,res):Promise<any>=>{
             )
         }
     } catch (error) {
+        // const unixTime=new Date().getMilliseconds();
+        //     const finalTime=(Math.floor(unixTime/1000)) + 3600;
+        //     await telegramBot.banChatMember(chatId, userId, {
+        //         until_date:finalTime,
+        //         revoke_messages:true
+        // })
         await telegramBot.restrictChatMember(chatId, userId, {
             can_send_messages: false,
             can_send_audios: false,
