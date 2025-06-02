@@ -202,8 +202,14 @@ telegramBot.on('callback_query', async (callbackQuery) => {
     const userId = callbackQuery.from.id;
     const groupChatId=msgIdMap.get(userId)?.groupChatId;
     const personalChatId=verificationSession.get(userId)?.chatId;
-    if(msgIdMap.get(userId)?.msgId  && groupChatId ){
+    const groupMsgId = msgIdMap.get(userId)?.msgId;
+    if(groupMsgId  && groupChatId ){
         await telegramBot.deleteMessage(groupChatId, msgIdMap.get(userId)?.msgId as number);
+        const msgs = allMsgIds.get(userId);
+        if (msgs) {
+            const updatedMsgs = msgs.filter(m => !(m.msgId === groupMsgId && m.chatId === groupChatId));
+            allMsgIds.set(userId, updatedMsgs);
+        }
     }else{
         console.log("Didn't find the message to be deleted!!")
     }
@@ -283,7 +289,7 @@ app.post('/receive-proofs', async (req,res):Promise<any>=>{
             created_at:data.created_at,
             username:URL_PARAMS_1,
             repoCount:data.public_repos,
-            contributionsLastYear:parseInt(contributions.trim(),10)
+            contributionsLastYear:parseInt(contributions.trim().replace(/,/g, ''),10)
         }
 
         console.log("The public data is",publicData)
@@ -312,10 +318,14 @@ app.post('/receive-proofs', async (req,res):Promise<any>=>{
             await telegramBot.sendMessage(chatId, 
                 `Welcome to the group ${data.name}.`
             );
+            const msgs=allMsgIds.get(userId);
+            if(msgs){
+                DeleteMessages(msgs, userId);
+            }  
             msgIdMap.delete(userId);
             allMsgIds.delete(userId);
             verificationSession.delete(userId);
-        return res.redirect(TG_GROUP_URL);
+            return res.redirect(TG_GROUP_URL);
         }else{
             const unixTime=new Date().getMilliseconds();
             const finalTime=(Math.floor(unixTime/1000)) + 3600;
@@ -421,11 +431,14 @@ app.listen(PORT, async () => {
 cron.schedule('* * * * *', async () => {
     const now = Math.floor(Date.now()/1000) 
     console.log("[CRON] Running periodic verification cleanup...");
-  
+    
+    console.log("The messages are", msgIdMap.entries());
+
     for (const [userId, { timeStarted, verified, groupChatId, msgId }] of msgIdMap.entries()) {
       if (verified) continue;
-  
+     
       const elapsed = now - timeStarted;
+      console.log("The timestamps are", now, timeStarted, elapsed);
       if (elapsed > VERIFICATION_TIMEOUT) {
         try {
           console.log(`[CRON] User ${userId} failed to verify in time. Banning...`);
@@ -435,17 +448,9 @@ cron.schedule('* * * * *', async () => {
           });
   
           const msgs = allMsgIds.get(userId);
-          if (msgs) {
-            for (const { msgId, chatId } of msgs) {
-              try {
-                await telegramBot.deleteMessage(chatId, msgId);
-                console.log(`[CRON] Deleted message ${msgId} for user ${userId}`);
-              } catch (err) {
-                console.warn(`[CRON] Failed to delete message ${msgId} for user ${userId}:`, err);
-              }
-            }
+          if(msgs !== undefined){
+            DeleteMessages(msgs, userId);
           }
-  
           msgIdMap.delete(userId);
           allMsgIds.delete(userId);
           verificationSession.delete(userId);
@@ -457,3 +462,19 @@ cron.schedule('* * * * *', async () => {
     }
   });
   
+
+  const DeleteMessages=async (msgs:{
+    msgId: number;
+    chatId: number;
+}[], userId:number)=>{
+    if (msgs) {
+        for (const { msgId, chatId } of msgs) {
+          try {
+            await telegramBot.deleteMessage(chatId, msgId);
+            console.log(`[CRON] Deleted message ${msgId} for user ${userId}`);
+          } catch (err) {
+            console.warn(`[CRON] Failed to delete message ${msgId} for user ${userId}:`, err);
+          }
+        }
+      }
+  }
