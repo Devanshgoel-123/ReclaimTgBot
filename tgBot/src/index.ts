@@ -205,11 +205,15 @@ telegramBot.on('callback_query', async (callbackQuery) => {
     const personalChatId=verificationSession.get(userId)?.chatId;
     const groupMsgId = msgIdMap.get(userId)?.msgId;
     if(groupMsgId  && groupChatId ){
-        await telegramBot.deleteMessage(groupChatId, msgIdMap.get(userId)?.msgId as number);
-        const msgs = allMsgIds.get(userId);
-        if (msgs) {
-            const updatedMsgs = msgs.filter(m => !(m.msgId === groupMsgId && m.chatId === groupChatId));
-            allMsgIds.set(userId, updatedMsgs);
+        try {
+            await telegramBot.deleteMessage(groupChatId, groupMsgId);
+            const msgs = allMsgIds.get(userId);
+            if (msgs) {
+                const updatedMsgs = msgs.filter(m => !(m.msgId === groupMsgId && m.chatId === groupChatId));
+                allMsgIds.set(userId, updatedMsgs);
+            }
+        } catch (err) {
+            console.error(`❌ Failed to delete message ${groupMsgId} in chat ${groupChatId}:`, err);
         }
     }else{
         console.log("Didn't find the message to be deleted!!")
