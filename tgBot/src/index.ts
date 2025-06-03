@@ -14,7 +14,7 @@ const TG_TOKEN = process.env.TELEGRAM_BOT_KEY;
 const APP_ID = process.env.APPLICATION_ID;
 const APP_SECRET = process.env.APPLICATION_SECRET;
 const PROVIDER_ID = process.env.PROVIDER_ID;
-const TG_GROUP_URL = process.env.TG_GROUP_URL || "https://t.me/+NhYD5b9eefllMzZl";
+const TG_GROUP_URL = process.env.TG_GROUP_URL || "https://t.me/+SX2IH6iNdbFkODll";
 const BASE_URL = process.env.BASE_URL || "http://localhost:3000"; 
 const VERIFICATION_TIMEOUT = 5 * 60;
 const BAN_DURATION = 3600;
@@ -36,9 +36,9 @@ async function setupWebhook() {
     try {
         await telegramBot.deleteWebHook();
         console.log("Deleted existing webhook");
-
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
+ 
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        console.log("the group url is", TG_GROUP_URL);
         const result = await telegramBot.setWebHook(WEBHOOK_URL,{
             allowed_updates:[
                "message", 
