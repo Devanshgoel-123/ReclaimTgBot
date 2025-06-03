@@ -18,6 +18,7 @@ const TG_GROUP_URL = process.env.TG_GROUP_URL || "https://t.me/+SX2IH6iNdbFkODll
 const BASE_URL = process.env.BASE_URL || "http://localhost:3000"; 
 const VERIFICATION_TIMEOUT = 5 * 60;
 const BAN_DURATION = 3600;
+const BOT_NAME="VerifyproofreclaimBot"
 
 if (!TG_TOKEN || !APP_ID || !APP_SECRET || !PROVIDER_ID) {
     console.error("Missing required environment variables");
@@ -144,7 +145,7 @@ telegramBot.on("new_chat_members", async (msg) => {
                 `⏰ You have 5 minutes to complete verification, or you'll be temporarily banned.`, {
                 reply_markup: {
                     inline_keyboard: [[
-                        { text: '✅ Verify Me', url: `https://t.me/VerifyreclaimBot?start=verifyme_${chatId}` }
+                        { text: '✅ Verify Me', url: `https://t.me/${BOT_NAME}?start=verifyme_${chatId}` }
                     ]]
                 }
             });
