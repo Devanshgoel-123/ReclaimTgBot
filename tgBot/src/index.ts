@@ -14,11 +14,11 @@ const TG_TOKEN = process.env.TELEGRAM_BOT_KEY;
 const APP_ID = process.env.APPLICATION_ID;
 const APP_SECRET = process.env.APPLICATION_SECRET;
 const PROVIDER_ID = process.env.PROVIDER_ID;
-const TG_GROUP_URL = process.env.TG_GROUP_URL || "https://t.me/+SX2IH6iNdbFkODll";
+const TG_GROUP_URL = process.env.TG_GROUP_URL || "https://t.me/sncorestars";
 const BASE_URL = process.env.BASE_URL || "http://localhost:3000"; 
 const VERIFICATION_TIMEOUT = 5 * 60;
 const BAN_DURATION = 3600;
-const BOT_NAME="VerifyproofreclaimBot"
+const BOT_NAME="Yggdrasil_07Bot"
 
 if (!TG_TOKEN || !APP_ID || !APP_SECRET || !PROVIDER_ID) {
     console.error("Missing required environment variables");
@@ -111,7 +111,6 @@ telegramBot.on('polling_error', (error) => {
 
 telegramBot.on("chat_join_request", async(msg)=>{
     console.log("The entry tried");
-    // await telegramBot.declineChatJoinRequest(msg.chat.id, msg.from.id);
     console.log("Welcome new member to the tg group", msg.chat.id, msg.from.id)
 })
 
@@ -141,14 +140,26 @@ telegramBot.on("new_chat_members", async (msg) => {
             });
 
             const msgSent = await telegramBot.sendMessage(chatId, 
-                `Hi ${newUser.first_name || newUser.username || 'there'}, please click below to verify and join the group.\n\n` +
-                `⏰ You have 5 minutes to complete verification, or you'll be temporarily banned.`, {
+                `Hey! The *Core Stars Group* is gated via *zkTLS* based on your *GitHub Reputation*.
+              
+              Make sure you have:
+              
+              - More than 5 public repositories
+              - More than 50 github contributions
+              - Account active for more than 3 months
+              
+              *Note:* You must verify within *5 minutes* after clicking the button below.  
+              If not, the bot will automatically block you from joining the group.
+              
+              `, {
+                parse_mode: 'Markdown',
                 reply_markup: {
-                    inline_keyboard: [[
-                        { text: '✅ Verify Me', url: `https://t.me/${BOT_NAME}?start=verifyme_${chatId}` }
-                    ]]
+                  inline_keyboard: [[
+                    { text: 'Tap To Begin Verification', url: `https://t.me/${BOT_NAME}?start=verifyme_${chatId}` }
+                  ]]
                 }
-            });
+              });
+              
             allMsgIds.set(newUser.id,[{msgId:msgSent.message_id, chatId:chatId}]);
             msgIdMap.set(newUser.id, { msgId: msgSent.message_id, groupChatId: chatId, verified:false, timeStarted:Math.floor(Date.now()/1000) });
             console.log(`Stored message mapping for user ${newUser.id}:`, msgIdMap.get(newUser.id));
@@ -161,7 +172,6 @@ telegramBot.on("new_chat_members", async (msg) => {
     }
 });
 
-// 2nd part of the flow, when user is DMed via bot to select the device they are on, currently
 
 telegramBot.onText(/\/start (.+)/, async (msg, match) => {
     const personalChatId = msg.chat.id;
@@ -249,7 +259,7 @@ telegramBot.on('callback_query', async (callbackQuery) => {
             const qrBuffer=await QRCode.toBuffer(requestURL)
             console.log(qrBuffer)
             const msgSent=await telegramBot.sendPhoto(userId, qrBuffer, {
-                    caption: `Scan this QR code from your mobile Device to Verify:\n`,
+                    caption: `Scan this QR code to verify via zkTLS :\n`,
             });
             const existingMsgs=allMsgIds.get(userId);
             if(existingMsgs){
@@ -317,9 +327,9 @@ app.post('/receive-proofs', async (req,res):Promise<any>=>{
                 can_invite_users: true,
                 can_pin_messages: true
             });
-            await telegramBot.sendMessage(userId, 
-                `✅ Verification complete! You've been granted access to the group.`
-            );
+            await telegramBot.sendPhoto(userId, "https://ik.imagekit.io/xnyu7djh7/eli_meme_image.jpg?updatedAt=1748959679844",{
+                caption:"Your verification is complete"
+            })
             await telegramBot.sendMessage(chatId, 
                 `Welcome to the group ${data.name}.`
             );
