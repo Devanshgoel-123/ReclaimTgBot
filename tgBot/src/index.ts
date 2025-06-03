@@ -409,7 +409,7 @@ const checkEligibilityToEnterGroup=(publicData:publicData):boolean=>{
         const isOlderThanThreeMonths = createdAtUTC < threeMonthsAgoUTC;
         const contributionsLastYear = Number(publicData.contributionsLastYear) || 0;
         const repoCount = Number(publicData.repoCount) || 0;
-        return contributionsLastYear > 300 && isOlderThanThreeMonths && repoCount > 5;
+        return contributionsLastYear > 50 && isOlderThanThreeMonths && repoCount > 5;
     }catch(err){
         console.log("Error checking eligibility for the user")
         return false;
