@@ -140,25 +140,23 @@ telegramBot.on("new_chat_members", async (msg) => {
             });
 
             const msgSent = await telegramBot.sendMessage(chatId, 
-                `Hey! The *Core Stars Group* is gated via *zkTLS* based on your *GitHub Reputation*.
+                'Hey! The Core Stars Group is gated via zkTLS based on your GitHub Reputation.\n\n' +
+                'To join, please make sure you meet the following requirements:\n\n' +
+                '- More than 5 public repositories\n' +
+                '- More than 50 GitHub contributions\n' +
+                '- GitHub account active for more than 3 months\n\n' +
+                'Important: You must verify within 5 minutes after clicking the button below.\n' +
+                'If you do not verify in time, the bot will automatically block you from joining the group.\n\n', {
+                  reply_markup: {
+                    inline_keyboard: [[
+                      {
+                        text: 'Tap To Begin Verification',
+                        url: `https://t.me/${BOT_NAME}?start=verifyme_${chatId}`
+                      }
+                    ]]
+                  }
+              });          
               
-              Make sure you have:
-              
-              - More than 5 public repositories
-              - More than 50 github contributions
-              - Account active for more than 3 months
-              
-              *Note:* You must verify within *5 minutes* after clicking the button below.  
-              If not, the bot will automatically block you from joining the group.
-              
-              `, {
-                parse_mode: 'Markdown',
-                reply_markup: {
-                  inline_keyboard: [[
-                    { text: 'Tap To Begin Verification', url: `https://t.me/${BOT_NAME}?start=verifyme_${chatId}` }
-                  ]]
-                }
-              });
               
             allMsgIds.set(newUser.id,[{msgId:msgSent.message_id, chatId:chatId}]);
             msgIdMap.set(newUser.id, { msgId: msgSent.message_id, groupChatId: chatId, verified:false, timeStarted:Math.floor(Date.now()/1000) });
