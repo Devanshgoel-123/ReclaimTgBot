@@ -187,8 +187,10 @@ telegramBot.onText(/\/start (.+)/, async (msg, match) => {
             'Welcome! Are you using Telegram on a mobile device or desktop?', {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: "📱 Mobile", callback_data: "device_mobile" }],
-                    [{ text: "🖥️ Desktop", callback_data: "device_desktop" }]
+                    [{ text: "📱 Android Device ", callback_data: "device_mobile_android" }],
+                    [{ text: "📱 IOS Device", callback_data: "device_mobile_ios" }],
+                    [{ text: "🖥️ Desktop", callback_data: "device_desktop" }],
+
                 ]
             }
         });
@@ -235,18 +237,31 @@ telegramBot.on('callback_query', async (callbackQuery) => {
     if (isNaN(groupChatId)) {
     return telegramBot.sendMessage(userId, "Could not extract group information from the link.");
     }
-    const reclaimProofRequest = await ReclaimProofRequest.init(APP_ID, APP_SECRET, PROVIDER_ID);
+    const deviceType= data?.toLowerCase().includes("ios") ? "ios" : data?.toLowerCase().includes("android") ? "android" : "desktop"; 
+    const reclaimProofRequest = await ReclaimProofRequest.init(APP_ID, APP_SECRET, PROVIDER_ID, {
+        device:deviceType,
+        useAppClip: "desktop" !== deviceType
+    });
     reclaimProofRequest.setRedirectUrl(TG_GROUP_URL);
     reclaimProofRequest.setAppCallbackUrl(`${BASE_URL}/receive-proofs?userId=${userId}&chatId=${groupChatId}`);
     const requestURL = await reclaimProofRequest.getRequestUrl();
 
     try {
         if(data?.toLowerCase().includes("mobile")){
-            const msgSent=await telegramBot.sendMessage(userId, "Click below to verify:", {
+            let msgSent;
+            if(data.toLowerCase().includes("ios")){
+                msgSent=await telegramBot.sendMessage(userId, "Click below to verify:", {
                     reply_markup: {
                       inline_keyboard: [[{ text: "Click To Begin Verification", url:requestURL }]],
                     },
             });
+            }else{
+                msgSent=await telegramBot.sendMessage(userId, "Click below to verify:", {
+                    reply_markup: {
+                      inline_keyboard: [[{ text: "Click To Begin Verification", url:requestURL }]],
+                    },
+            });
+            }
             const existingMsgs=allMsgIds.get(userId);
             if(existingMsgs){
             existingMsgs.push({msgId:msgSent.message_id, chatId:personalChatId})
@@ -349,7 +364,7 @@ app.post('/receive-proofs', async (req,res):Promise<any>=>{
             console.log(`User ${userId} verification failed banning them from chat`,finalTime);
             let reason = "";
             if (!isValidProof) reason = "Invalid proof.";
-            else reason = "GitHub account does not meet the minimum requirements (3+ months old, 5+ repos, 50+ contributions in last year).";
+            else reason = "GitHub account does not meet the minimum requirements (3+ months old, 5+ repos, 30+ contributions in last year).";
             
             await telegramBot.sendMessage(userId, 
                 `❌ Verification failed: ${reason}\n\nPlease try again after ensuring your GitHub account meets the requirements.`
@@ -407,7 +422,7 @@ const checkEligibilityToEnterGroup=(publicData:publicData):boolean=>{
         const isOlderThanThreeMonths = createdAtUTC < threeMonthsAgoUTC;
         const contributionsLastYear = Number(publicData.contributionsLastYear) || 0;
         const repoCount = Number(publicData.repoCount) || 0;
-        return contributionsLastYear > 50 && isOlderThanThreeMonths && repoCount > 5;
+        return contributionsLastYear > 30 && isOlderThanThreeMonths && repoCount > 5;
     }catch(err){
         console.log("Error checking eligibility for the user")
         return false;
