@@ -17,7 +17,7 @@ const PROVIDER_ID = process.env.PROVIDER_ID;
 const TG_GROUP_URL = process.env.TG_GROUP_URL || "https://t.me/sncorestars";
 const BASE_URL = process.env.BASE_URL || "http://localhost:3000"; 
 const VERIFICATION_TIMEOUT = 5 * 60;
-const BAN_DURATION = 3600;
+const BAN_DURATION = 600;
 const BOT_NAME="Yggdrasil_07Bot"
 
 if (!TG_TOKEN || !APP_ID || !APP_SECRET || !PROVIDER_ID) {
