@@ -143,7 +143,7 @@ telegramBot.on("new_chat_members", async (msg) => {
                 'Hey! The Core Stars Group is gated via zkTLS based on your GitHub Reputation.\n\n' +
                 'To join, please make sure you meet the following requirements:\n\n' +
                 '- More than 5 public repositories\n' +
-                '- More than 50 GitHub contributions\n' +
+                '- More than 30 GitHub contributions\n' +
                 '- GitHub account active for more than 3 months\n\n' +
                 'Important: You must verify within 5 minutes after clicking the button below.\n' +
                 'If you do not verify in time, the bot will automatically block you from joining the group.\n\n', {
@@ -233,7 +233,7 @@ telegramBot.on('callback_query', async (callbackQuery) => {
     if (!data || !data.startsWith("device_")) return;
     if(!userId || !personalChatId || !groupChatId) return; 
     
-    console.log("The required chat💬 id is",personalChatId, groupChatId)
+    console.log("The required chat id is",personalChatId, groupChatId)
     if (isNaN(groupChatId)) {
     return telegramBot.sendMessage(userId, "Could not extract group information from the link.");
     }
@@ -248,20 +248,11 @@ telegramBot.on('callback_query', async (callbackQuery) => {
 
     try {
         if(data?.toLowerCase().includes("mobile")){
-            let msgSent;
-            if(data.toLowerCase().includes("ios")){
-                msgSent=await telegramBot.sendMessage(userId, "Click below to verify:", {
+            const msgSent=await telegramBot.sendMessage(userId, "Click below to verify:", {
                     reply_markup: {
                       inline_keyboard: [[{ text: "Click To Begin Verification", url:requestURL }]],
                     },
             });
-            }else{
-                msgSent=await telegramBot.sendMessage(userId, "Click below to verify:", {
-                    reply_markup: {
-                      inline_keyboard: [[{ text: "Click To Begin Verification", url:requestURL }]],
-                    },
-            });
-            }
             const existingMsgs=allMsgIds.get(userId);
             if(existingMsgs){
             existingMsgs.push({msgId:msgSent.message_id, chatId:personalChatId})
