@@ -349,7 +349,7 @@ app.post('/receive-proofs', async (req,res):Promise<any>=>{
             console.log(`User ${userId} verification failed banning them from chat`,finalTime);
             let reason = "";
             if (!isValidProof) reason = "Invalid proof.";
-            else reason = "GitHub account does not meet the minimum requirements (3+ months old, 5+ repos, 300+ contributions in last year).";
+            else reason = "GitHub account does not meet the minimum requirements (3+ months old, 5+ repos, 50+ contributions in last year).";
             
             await telegramBot.sendMessage(userId, 
                 `❌ Verification failed: ${reason}\n\nPlease try again after ensuring your GitHub account meets the requirements.`
